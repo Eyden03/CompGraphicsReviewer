@@ -1,0 +1,208 @@
+const fs = require('fs');
+const path = require('path');
+
+const root = fs.existsSync(path.join(__dirname,'Module1Act')) ? __dirname : path.resolve(__dirname,'..');
+const outputFile = fs.existsSync(path.join(__dirname,'Module1Act')) ? path.join(__dirname,'OpenGL_Exam_Reviewer.html') : path.join(__dirname,'index.html');
+const moduleDirs = ['Module1Act','Module2Act','Module3Act','Module4Act'];
+const sourceFiles = [];
+const imageFiles = [];
+
+function walk(dir) {
+  for (const ent of fs.readdirSync(dir, {withFileTypes:true})) {
+    if (['.git','.kilo','.vscode','bin','obj'].includes(ent.name)) continue;
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) walk(p);
+    else if (ent.isFile()) {
+      const ext = path.extname(ent.name).toLowerCase();
+      if (ext === '.cpp' && /^Module[1-4]Act/.test(path.relative(root,p))) sourceFiles.push(p);
+      if (['.png','.gif'].includes(ext) && /^Module[1-4]Act/.test(path.relative(root,p))) imageFiles.push(p);
+    }
+  }
+}
+moduleDirs.forEach(d => walk(path.join(root,d)));
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function highlight(s) {
+  let x = esc(s);
+  x = x.replace(/(\/\/.*)$/gm, '<span class="tok-comment">$1</span>');
+  x = x.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comment">$1</span>');
+  x = x.replace(/\b(while|for|if|else|return|const|void|int|float|double|char|using|namespace|true|false|struct)\b/g, '<span class="tok-key">$1</span>');
+  x = x.replace(/\b(gl[A-Za-z0-9_]+|glut[A-Za-z0-9_]+|GL_[A-Z0-9_]+)\b/g, '<span class="tok-gl">$1</span>');
+  x = x.replace(/\b(\d+(?:\.\d+)?f?)\b/g, '<span class="tok-num">$1</span>');
+  return x;
+}
+function tokenFor(p) {
+  const b = path.basename(p, '.cpp');
+  const m = b.match(/(?:Ex|Q|Program|MP)\d+/i);
+  return m ? m[0].toLowerCase() : b.toLowerCase();
+}
+function findImage(p) {
+  const rel = path.relative(root,p).replaceAll('\\','/');
+  const mod = rel.match(/^Module\dAct/)[0];
+  const tok = tokenFor(p);
+  const candidates = imageFiles.filter(f => {
+    const r = path.relative(root,f).replaceAll('\\','/').toLowerCase();
+    return r.startsWith(mod.toLowerCase()) && r.includes(tok);
+  });
+  candidates.sort((a,b) => {
+    const score = f => /OutputScreenshot/i.test(f) ? 0 : 1;
+    return score(a)-score(b) || fs.statSync(a).size-fs.statSync(b).size;
+  });
+  return candidates[0] || null;
+}
+const sources = sourceFiles.sort().map(p => {
+  const rel = path.relative(root,p).replaceAll('\\','/');
+  const parts = rel.split('/');
+  const module = parts[0].replace('Act','');
+  const activity = parts.slice(1,-1).join(' / ') || 'Source';
+  const img = findImage(p);
+  let image = null;
+  if (img) {
+    const ext = path.extname(img).toLowerCase();
+    image = `data:${ext === '.gif' ? 'image/gif' : 'image/png'};base64,${fs.readFileSync(img).toString('base64')}`;
+  }
+  return {id: rel, file: path.basename(p), module, activity, code: fs.readFileSync(p,'utf8'), html: highlight(fs.readFileSync(p,'utf8')), image, imageName: img ? path.basename(img) : null};
+});
+
+const concepts = [
+  ['What clears the color buffer before drawing?', 'glClear(GL_COLOR_BUFFER_BIT)', 'glClear removes the selected buffers; GL_COLOR_BUFFER_BIT targets the color buffer.', 'Rendering basics'],
+  ['Which function sets the background color?', 'glClearColor', 'glClearColor stores the RGBA clear color used by the next glClear.', 'Rendering basics'],
+  ['What pair brackets immediate-mode vertices?', 'glBegin and glEnd', 'Every immediate-mode primitive is described between glBegin(mode) and glEnd().', 'Immediate mode'],
+  ['What does glFlush do?', 'glFlush', 'It asks OpenGL to execute buffered commands promptly.', 'Rendering basics'],
+  ['Which callback draws the frame?', 'display', 'glutDisplayFunc(display) registers the function GLUT calls to redraw.', 'GLUT callbacks'],
+  ['What does glutPostRedisplay request?', 'a redraw', 'It marks the current window for repaint, commonly after input changes state.', 'GLUT callbacks'],
+  ['What is GL_TRIANGLES?', 'a primitive that groups every 3 vertices into a triangle', 'Three successive vertices form one independent triangle.', 'Primitive types'],
+  ['What does glVertex2f(x, y) provide?', 'a 2D floating-point vertex', 'The f suffix means float and the 2 means two coordinates.', 'Coordinates'],
+  ['Why call glutMainLoop()?', 'to enter GLUT event processing', 'It keeps the window alive and dispatches callbacks.', 'Program structure'],
+  ['What does glutKeyboardFunc(keyboard) register?', 'a normal-keyboard callback', 'GLUT calls it with the pressed unsigned char and mouse coordinates.', 'Keyboard input'],
+  ['What does glutMouseFunc(mouse) register?', 'a mouse-button callback', 'It receives button, state, and window coordinates.', 'Mouse input'],
+  ['What is the purpose of glColor3f(r,g,b)?', 'set the current RGB color', 'The three float values are red, green, and blue components.', 'Color'],
+  ['What does glTranslatef change?', 'the current coordinate position', 'It multiplies the current matrix by a translation.', 'Transformations'],
+  ['Why use glPushMatrix/glPopMatrix?', 'save and restore matrix state', 'They isolate transformations so one object does not move others.', 'Matrix operations'],
+  ['What does glLoadIdentity do?', 'reset the current matrix to identity', 'It removes prior transformations from the active matrix.', 'Matrix operations'],
+  ['Which callback is suitable for repeated animation updates?', 'glutTimerFunc or glutIdleFunc', 'Timers provide scheduled updates; idle runs when the event queue is empty.', 'Animation'],
+  ['What does glVertexPointer describe?', 'the layout of vertex-array data', 'It supplies component count, type, stride, and pointer.', 'Vertex arrays'],
+  ['What does glDrawElements use?', 'an index array to reuse vertices', 'Indices select vertices for the requested primitive.', 'Indexed rendering'],
+  ['What does glEnableClientState(GL_COLOR_ARRAY) enable?', 'color-array reads', 'OpenGL reads per-vertex colors from the array configured by glColorPointer.', 'Vertex arrays'],
+  ['What does glutSwapBuffers do?', 'present the back buffer', 'With double buffering it swaps the rendered back buffer to the screen.', 'Buffering'],
+  ['Which header supplies GLUT windowing functions?', '#include <GL/glut.h>', 'The GLUT/freeGLUT header declares window and callback APIs.', 'Headers'],
+  ['Why is the alpha passed to glClearColor often 1.0f?', 'to make the clear color opaque', 'The fourth component is alpha.', 'Color'],
+  ['In immediate mode, where should glColor3f appear for per-vertex shading?', 'before the vertex it colors', 'The current color is captured when the vertex is issued.', 'Color'],
+  ['What does GL_LINE_LOOP do?', 'connect vertices and close the final edge', 'It draws a connected outline and links the last vertex back to the first.', 'Primitive types'],
+  ['What does GL_TRIANGLE_FAN share?', 'the first vertex as a common center', 'Each new pair with the center creates a triangle.', 'Primitive types'],
+  ['What does glutReshapeFunc(reshape) handle?', 'window size changes', 'The reshape callback can update the viewport and projection.', 'Projection and view'],
+  ['Why call glMatrixMode(GL_PROJECTION)?', 'to edit the projection matrix', 'Subsequent matrix operations affect projection setup.', 'Projection and view'],
+  ['What does glOrtho configure?', 'an orthographic projection', 'It maps a box of coordinates without perspective foreshortening.', 'Projection and view'],
+  ['What does glRasterPos2f set?', 'the position for bitmap text/pixels', 'It positions the raster cursor used by bitmap rendering.', 'Text rendering']
+];
+const sourceQs = sources.filter(s => /glBegin|glDrawElements|glutKeyboardFunc|glutMouseFunc|glutTimerFunc|glVertexPointer|glColor3f/.test(s.code)).slice(0,45).map((s,i) => {
+  const fn = (s.code.match(/\b(gl(?:ut)?[A-Za-z0-9_]+)/)||['glBegin'])[1];
+  return [`In ${s.file}, which OpenGL/GLUT call is visibly used for this activity?`, fn, `${fn} appears in the real source file and is part of this activity's rendering or interaction logic.`, 'Source recognition', s.id];
+});
+// Keep the flashcard bank concept-focused. Source-based practice belongs in Fill-in-the-Blank,
+// where the learner sees the actual file and matched output instead of a vague recognition prompt.
+const allQ = concepts;
+const flashTemplates = {
+  glBegin: ['Why is glBegin used in this source file?', 'It starts an immediate-mode primitive block; vertices issued until glEnd are interpreted using the selected primitive.', 'Immediate mode'],
+  glEnd: ['Why must glEnd appear after glBegin?', 'It closes the immediate-mode primitive block and completes the vertex specification.', 'Immediate mode'],
+  glClear: ['What does glClear do in this source file?', 'It clears the selected buffer, commonly GL_COLOR_BUFFER_BIT, before the next frame is drawn.', 'Rendering basics'],
+  glClearColor: ['Why is glClearColor used before glClear?', 'It sets the RGBA color that glClear uses for the color buffer.', 'Color and buffers'],
+  glColor3f: ['What state does glColor3f change?', 'It sets the current RGB drawing color using three floating-point components.', 'Color'],
+  glVertex2f: ['What does glVertex2f provide?', 'A two-dimensional vertex whose x and y coordinates are floating-point values.', 'Coordinates'],
+  glVertex3f: ['What does glVertex3f provide?', 'A three-dimensional vertex with floating-point x, y, and z coordinates.', 'Coordinates'],
+  glFlush: ['Why is glFlush used?', 'It asks OpenGL to execute buffered commands promptly.', 'Rendering basics'],
+  glBegin: ['What determines how vertices are grouped after glBegin?', 'The primitive constant passed to glBegin, such as GL_TRIANGLES, GL_LINES, or GL_POLYGON.', 'Primitive types'],
+  glutInit: ['Why is glutInit called in main?', 'It initializes GLUT and processes the program command-line arguments.', 'GLUT setup'],
+  glutInitWindowSize: ['What does glutInitWindowSize configure?', 'The initial width and height of the GLUT window.', 'GLUT setup'],
+  glutCreateWindow: ['What does glutCreateWindow create?', 'The GLUT window and its title/context for rendering.', 'GLUT setup'],
+  glutDisplayFunc: ['What does glutDisplayFunc register?', 'The display callback that GLUT invokes when the window needs to be drawn.', 'GLUT callbacks'],
+  glutKeyboardFunc: ['What does glutKeyboardFunc register?', 'A callback for normal keyboard keys, receiving the key and mouse coordinates.', 'Keyboard input'],
+  glutSpecialFunc: ['What does glutSpecialFunc register?', 'A callback for special keys such as arrows and function keys.', 'Keyboard input'],
+  glutMouseFunc: ['What does glutMouseFunc register?', 'A callback for mouse-button presses and releases with window coordinates.', 'Mouse input'],
+  glutMotionFunc: ['What does glutMotionFunc register?', 'A callback for mouse movement while a button is held.', 'Mouse input'],
+  glutPassiveMotionFunc: ['What does glutPassiveMotionFunc register?', 'A callback for mouse movement without a button being held.', 'Mouse input'],
+  glutTimerFunc: ['Why use glutTimerFunc?', 'To schedule a callback after a delay, commonly for controlled animation or countdown updates.', 'Animation and timers'],
+  glutIdleFunc: ['Why use glutIdleFunc?', 'To run an animation/update callback whenever GLUT is idle.', 'Animation and timers'],
+  glutPostRedisplay: ['Why call glutPostRedisplay after input changes state?', 'It requests that GLUT redraw the window using the updated state.', 'GLUT callbacks'],
+  glutSwapBuffers: ['What does glutSwapBuffers do?', 'It presents the rendered back buffer when using double buffering.', 'Buffering'],
+  glPushMatrix: ['Why use glPushMatrix?', 'It saves the current matrix so an object transformation can be isolated.', 'Matrix operations'],
+  glPopMatrix: ['Why use glPopMatrix?', 'It restores the matrix saved by glPushMatrix.', 'Matrix operations'],
+  glLoadIdentity: ['What does glLoadIdentity do?', 'It resets the current matrix to the identity matrix.', 'Matrix operations'],
+  glTranslatef: ['What does glTranslatef change?', 'It translates the current coordinate system by floating-point x, y, and z offsets.', 'Transformations'],
+  glRotatef: ['What does glRotatef change?', 'It rotates the current coordinate system by an angle around an axis.', 'Transformations'],
+  glScalef: ['What does glScalef change?', 'It scales the current coordinate system along the x, y, and z axes.', 'Transformations'],
+  glMatrixMode: ['Why call glMatrixMode?', 'It selects which matrix, such as GL_MODELVIEW or GL_PROJECTION, subsequent operations modify.', 'Projection and view'],
+  glOrtho: ['What projection does glOrtho configure?', 'An orthographic projection with no perspective foreshortening.', 'Projection and view'],
+  glViewport: ['What does glViewport define?', 'The rectangular region of the window where normalized device coordinates are mapped.', 'Projection and view'],
+  glVertexPointer: ['What does glVertexPointer describe?', 'The component count, data type, stride, and memory address of vertex-array data.', 'Vertex arrays'],
+  glColorPointer: ['What does glColorPointer describe?', 'The layout and memory address of per-vertex color-array data.', 'Vertex arrays'],
+  glEnableClientState: ['Why enable GL_VERTEX_ARRAY or GL_COLOR_ARRAY?', 'It tells the fixed-function pipeline to read the corresponding enabled array.', 'Vertex arrays'],
+  glDisableClientState: ['Why disable a client state after drawing?', 'It prevents later drawing calls from accidentally using the previous vertex or color array.', 'Vertex arrays'],
+  glDrawArrays: ['What does glDrawArrays use?', 'A consecutive range of vertices from an enabled vertex array.', 'Vertex arrays'],
+  glDrawElements: ['What does glDrawElements use?', 'An index array to select and reuse vertices for the requested primitive.', 'Indexed rendering'],
+  glRasterPos2f: ['What does glRasterPos2f set?', 'The raster position used as the starting point for bitmap text or pixel operations.', 'Text rendering']
+};
+const generatedFlashcards=[];
+for(const s of sources){
+  const tokens=[...new Set((s.code.match(/glut[A-Za-z0-9_]+|gl[A-Za-z0-9_]+/g)||[]))];
+  for(const token of tokens){
+    const t=flashTemplates[token];
+    if(t) generatedFlashcards.push([t[0]+' Source: '+s.file,t[1],t[2],s.module+' / '+s.activity,s.id]);
+  }
+  const constants=[...new Set((s.code.match(/GL_[A-Z0-9_]+/g)||[]))];
+  for(const c of constants){
+    const definitions={GL_POINTS:'independent points',GL_LINES:'independent line segments',GL_LINE_STRIP:'a connected line strip',GL_LINE_LOOP:'a connected outline whose final edge closes to the first vertex',GL_TRIANGLES:'independent groups of three vertices',GL_TRIANGLE_STRIP:'a connected strip of triangles',GL_TRIANGLE_FAN:'triangles sharing the first vertex as a center',GL_QUADS:'independent groups of four vertices',GL_QUAD_STRIP:'a connected strip of quadrilaterals',GL_POLYGON:'one polygon from the supplied vertices',GL_COLOR_BUFFER_BIT:'the color buffer',GL_MODELVIEW:'the model-view matrix',GL_PROJECTION:'the projection matrix',GL_VERTEX_ARRAY:'the vertex array client state',GL_COLOR_ARRAY:'the color array client state'};
+    if(definitions[c]) generatedFlashcards.push(['In '+s.file+', what does '+c+' mean?',definitions[c], 'This constant is used in the real source file to select a primitive, buffer, matrix, or array state.', 'Source syntax',s.id]);
+  }
+}
+const flashcards = concepts.concat(generatedFlashcards);
+const payload = JSON.stringify({sources, questions: allQ, flashcards, fillVariants: 3});
+
+const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenGL Exam Reviewer</title>
+<style>
+:root{--bg:#0b1020;--panel:#121a2d;--panel2:#18223a;--text:#e9eefc;--muted:#94a3c7;--accent:#7c9cff;--accent2:#6ee7c6;--danger:#ff7c8d;--border:#263453;--code:#0a0f1c}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,#162650 0,#0b1020 40%);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}body.light{--bg:#eef3fb;--panel:#fff;--panel2:#e9eef8;--text:#182033;--muted:#52617c;--accent:#345eea;--accent2:#087f63;--border:#ccd6e8;--code:#101827;background:#eef3fb}.app{max-width:1500px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{color:var(--accent2);font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.title{font-size:clamp(28px,4vw,48px);line-height:1.05;margin:6px 0}.sub{color:var(--muted);max-width:760px}.actions,.chips,.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.btn,.select,.input{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 13px;cursor:pointer}.btn:hover{border-color:var(--accent);transform:translateY(-1px)}.btn.primary{background:var(--accent);color:#fff;border-color:transparent}.btn.ghost{background:transparent}.grid{display:grid;grid-template-columns:280px 1fr;gap:18px;margin-top:20px}.side,.card,.stat{background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--border);border-radius:16px}.side{padding:14px;height:max-content;position:sticky;top:16px}.nav{display:grid;gap:6px;margin:12px 0}.nav button{text-align:left}.nav button.active{background:var(--panel2);border-color:var(--accent)}.content{min-width:0}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.stat{padding:13px}.stat b{font-size:23px;display:block}.stat span{color:var(--muted);font-size:12px}.card{padding:18px;margin-bottom:14px}.card h2,.card h3{margin-top:0}.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px, .8fr);gap:14px}.code{background:var(--code);border:1px solid #26314a;border-radius:12px;padding:14px;overflow:auto;white-space:pre;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;max-height:560px}.blank{width:92px;border:1px solid var(--accent);background:#263354;color:#fff;border-radius:5px;padding:2px 5px;font:inherit}.blank:focus{outline:2px solid var(--accent2)}.blank.correct{border-color:#22c55e;background:#063b2a;color:#b7ffd7}.blank.incorrect{border-color:#ef4444;background:#4b1018;color:#ffd0d6}.blank-result{display:inline-block;margin-left:8px;font:12px/1.4 system-ui,sans-serif}.blank-result.correct{color:#6ee7c6}.blank-result.incorrect{color:#ff9aa7}.tok-key{color:#ff9ac2}.tok-gl{color:#76d9ff}.tok-num{color:#ffd27d}.tok-comment{color:#6d7c99}.shot{width:100%;max-height:420px;object-fit:contain;background:#060a13;border-radius:12px;border:1px solid var(--border)}.small{color:var(--muted);font-size:13px}.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:var(--panel2);color:var(--muted);font-size:12px;margin:2px}.answer{margin-top:12px;padding:12px;border-radius:10px;background:var(--panel2);border-left:4px solid var(--accent2)}.wrong{border-left-color:var(--danger)}.quiz-options{display:grid;gap:8px}.quiz-options label{padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer}.quiz-options label:hover{background:var(--panel2)}.progress{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0}.hide{display:none!important}.source-list{display:grid;gap:8px;max-height:480px;overflow:auto}.source-item{padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer}.source-item:hover{border-color:var(--accent)}.flash{min-height:220px;display:grid;place-items:center;text-align:center;font-size:22px}.order-list{display:grid;gap:8px}.order-item{padding:12px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;cursor:grab}.notice{padding:10px 12px;border-radius:10px;background:#243354;color:#dce7ff}.footer{color:var(--muted);font-size:12px;padding:16px 0} @media(max-width:950px){.grid{grid-template-columns:1fr}.side{position:static}.split{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><div class="app"><header class="top"><div><div class="eyebrow">Offline • Modules 1–4 • Exam prep</div><div class="title">OpenGL Exam Reviewer</div><div class="sub">A source-grounded study desk built from your actual C++ activities and matched output screenshots. Everything is embedded in this file—no server or internet required.</div></div><div class="actions"><button class="btn" id="theme">☼ Theme</button><button class="btn" id="resetProgress">Reset progress</button></div></header>
+<div class="grid"><aside class="side"><input class="input" id="search" placeholder="Search code, topics…" style="width:100%"><div class="toolbar" style="margin-top:8px"><select class="select" id="moduleFilter"><option value="all">All modules</option><option>Module1</option><option>Module2</option><option>Module3</option><option>Module4</option></select><select class="select" id="activityFilter"><option value="all">All activities</option></select></div><nav class="nav" id="nav"></nav><div class="small">Built from <b>${sources.length}</b> source files. Source code is preserved verbatim.</div></aside><main class="content"><div class="stats"><div class="stat"><b id="statScore">0%</b><span>overall accuracy</span></div><div class="stat"><b id="statAnswered">0</b><span>answered</span></div><div class="stat"><b id="statWeak">—</b><span>weak topic</span></div><div class="stat"><b id="statStreak">0</b><span>current streak</span></div></div><section id="view"></section><div class="footer">Offline reviewer • Progress is saved in this browser via localStorage. Double-click this HTML file anytime to study.</div></main></div></div>
+<script>const DB=${payload};</script><script>
+const S=DB.sources,Q=DB.questions,F=DB.flashcards;const state=JSON.parse(localStorage.getItem('ogl-reviewer-progress')||'{"answered":0,"correct":0,"wrong":[],"topics":{},"seen":{},"theme":"dark"}');let mode='learn', current=null, quizPool=[], quizIndex=0, fillPool=[], fillIndex=0, flashPool=[], flashIndex=0, timer=null, mockEnd=0;
+const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function save(){localStorage.setItem('ogl-reviewer-progress',JSON.stringify(state));renderStats()};function renderStats(){const pct=state.answered?Math.round(state.correct/state.answered*100):0;$('#statScore').textContent=pct+'%';$('#statAnswered').textContent=state.answered;const top=Object.entries(state.topics).sort((a,b)=>b[1]-a[1])[0];$('#statWeak').textContent=top?top[0]:'—';$('#statStreak').textContent=state.streak||0};
+function nav(){const items=[['learn','Learn Mode'],['fill','Fill-in-the-Blank'],['flash','Flashcards'],['mistakes','Mistakes & Progress']];$('#nav').innerHTML=items.map(x=>'<button class="btn '+(mode===x[0]?'active':'')+'" data-mode="'+x[0]+'">'+x[1]+'</button>').join('');document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;render()})};
+function filters(){const acts=[...new Set(S.filter(s=>$('#moduleFilter').value==='all'||s.module===$('#moduleFilter').value).map(s=>s.activity))];$('#activityFilter').innerHTML='<option value="all">All activities</option>'+acts.map(a=>'<option>'+esc(a)+'</option>').join('')};
+function pickSource(){let f=S.filter(s=>($('#moduleFilter').value==='all'||s.module===$('#moduleFilter').value)&&($('#activityFilter').value==='all'||s.activity===$('#activityFilter').value));const q=($('#search').value||'').toLowerCase();if(q)f=f.filter(s=>(s.id+s.code).toLowerCase().includes(q));return f};
+function sourceCard(s){return '<div class="split"><div><div class="small">'+esc(s.module+' / '+s.activity+' / '+s.file)+'</div><pre class="code">'+s.html+'</pre></div><div>'+(s.image?'<img class="shot" src="'+s.image+'" alt="'+esc(s.imageName||'output screenshot')+'">':'<div class="notice">No matching screenshot was found for this source file.</div>')+'<p class="small">Matching asset: '+esc(s.imageName||'none')+'</p></div></div>'};
+function renderLearn(){const list=pickSource();$('#view').innerHTML='<div class="card"><div class="toolbar"><div><h2 style="margin:0">Learn Mode</h2><div class="small">Browse actual source files, paired output, and recurring syntax.</div></div><button class="btn" id="toggleCode">Hide code</button><button class="btn" id="randomSource">Random source</button></div><div class="chips" style="margin:12px 0"><span class="tag">glClearColor → background</span><span class="tag">glBegin/glEnd → primitives</span><span class="tag">glutDisplayFunc → redraw callback</span><span class="tag">glDrawElements → indexed arrays</span></div><div id="sourceList" class="source-list">'+list.slice(0,40).map(s=>'<div class="source-item" data-id="'+esc(s.id)+'"><b>'+esc(s.file)+'</b><span class="small"> · '+esc(s.module+' / '+s.activity)+'</span></div>').join('')+'</div></div><div id="sourceDetail"></div>';document.querySelectorAll('.source-item').forEach(x=>x.onclick=()=>{const s=S.find(a=>a.id===x.dataset.id);$('#sourceDetail').innerHTML='<div class="card">'+sourceCard(s)+'<h3>What to notice</h3><p class="small">Look for setup in <code>main</code>, callback registration, frame clearing, primitive boundaries, vertex/color state, and any input or animation callback. This explanation is intentionally tied to the real file rather than replacing it with generic code.</p></div>';});$('#toggleCode').onclick=()=>document.querySelectorAll('.code').forEach(x=>x.classList.toggle('hide'));$('#randomSource').onclick=()=>{const s=list[Math.floor(Math.random()*list.length)];if(s){$('#sourceDetail').innerHTML='<div class="card">'+sourceCard(s)+'</div>';scrollTo(0,0)}}};
+function record(ok,topic,q){state.answered++;if(ok){state.correct++;state.streak=(state.streak||0)+1}else{state.streak=0;state.wrong.unshift({...q,answer:q.answer});state.wrong=state.wrong.slice(0,100)}state.topics[topic]=(state.topics[topic]||0)+(ok?0:1);save()}
+function answerBox(q,topic,answer,explanation,ref,ok){return '<div class="answer '+(ok?'':'wrong')+'"><b>'+(ok?'Correct ✓':'Not quite')+'</b><br><b>Correct answer:</b> '+esc(answer)+'<br><span>'+esc(explanation)+'</span><br><span class="small">'+esc(topic)+' · '+esc(ref||'OpenGL concepts')+'</span></div>'}
+function quizQuestion(q,kind){current={q,kind};let input=kind==='mcq'?'<div class="quiz-options">'+[q[1],q[1]==='glClear'?'glFlush':'glBegin and glEnd',q[1]==='glClearColor'?'glClear':'glVertex2f',q[1]==='a redraw'?'a window resize':'a shader program'].sort(()=>Math.random()-.5).map((a,i)=>'<label><input type="radio" name="ans" value="'+esc(a)+'"> '+esc(a)+'</label>').join('')+'</div>':'<input class="input" id="answer" placeholder="Type your answer…" style="width:100%">';return '<div class="card"><div class="small">'+kind.toUpperCase()+' · '+esc(q[3]||'OpenGL concepts')+'</div><h2>'+esc(q[0])+'</h2>'+input+'<div class="toolbar" style="margin-top:12px"><button class="btn primary" id="check">Check Answer</button><button class="btn" id="newQ">New Question</button><button class="btn" id="shuffle">Shuffle Questions</button><button class="btn" id="resetQuiz">Reset Quiz</button></div><div id="feedback"></div></div>'}
+function nextQuiz(){if(!quizPool.length||quizIndex>=quizPool.length){quizPool=Q.slice().sort(()=>Math.random()-.5);quizIndex=0}const q=quizPool[quizIndex++];$('#view').innerHTML=quizQuestion(q,mode==='mcq'?'mcq':'fill');$('#check').onclick=()=>{const ans=mode==='mcq'?document.querySelector('input[name=ans]:checked')?.value:$('#answer').value.trim();if(!ans){$('#feedback').innerHTML='<div class="answer wrong">Enter or select an answer first.</div>';return}const ok=ans.toLowerCase()===String(q[1]).toLowerCase()||String(q[1]).toLowerCase().includes(ans.toLowerCase())&&ans.length>3;record(ok,q[3]||'OpenGL concepts', {question:q[0],answer:q[1]});$('#feedback').innerHTML=answerBox(q,q[3]||'OpenGL concepts',q[1],q[2],q[4]||'Concept bank',ok)};$('#newQ').onclick=nextQuiz;$('#shuffle').onclick=()=>{quizPool=Q.slice().sort(()=>Math.random()-.5);quizIndex=0;nextQuiz()};$('#resetQuiz').onclick=()=>{quizPool=[];quizIndex=0;nextQuiz()}}
+function makeBlankQuiz(s,variant=0){
+  const lines=s.code.split(/\\r?\\n/);let idx=lines.map((_,i)=>i);
+  // Keep the full original file visible. Blanks are selected from code lines,
+  // while comments and include text remain readable for context.
+  let text=idx.map(i=>lines[i]);
+  const codeOnly=text.filter(x=>!/^\\s*(\\/\\/|\\*|\\/\\*)/.test(x));
+  const raw=[...new Set(codeOnly.join('\\n').match(/glut[A-Za-z0-9_]+|gl[A-Za-z0-9_]+|GL_[A-Z0-9_]+|\\b(void|int|float|double|const|return)\\b|[-+]?\\d+(?:\\.\\d+)?f?\\b/g)||[])];
+  const gl=raw.filter(x=>/^glut|^gl|^GL_/.test(x));
+  const numbers=raw.filter(x=>/^[-+]?\\d/.test(x));
+  const syntax=raw.filter(x=>/^(void|int|float|double|const|return)$/.test(x));
+  const groups=[gl,numbers,syntax];let chosen=[];const primary=groups[variant%groups.length];
+  chosen.push(...primary.slice(0,6));
+  for(const group of groups)for(const token of group)if(chosen.length<6&&!chosen.includes(token))chosen.push(token);
+  const answers=[];let html=text.map((line)=>{let out=esc(line);for(const token of chosen){if(answers.find(a=>a.token===token))continue;const safe=esc(token);if(out.includes(safe)){const n=answers.length;answers.push({token,answer:token});out=out.replace(safe,'<input class="blank" data-i="'+n+'" placeholder="…"><span class="blank-result" data-r="'+n+'"></span>');break}}return out}).join('\\n');
+  return {html,answers,source:s};
+}
+function buildFillPool(){const sourcesForFill=pickSource().filter(s=>s.code.includes('gl'));fillPool=[];for(const s of sourcesForFill)for(let v=0;v<DB.fillVariants;v++){const b=makeBlankQuiz(s,v);if(b.answers.length>=3)fillPool.push(b)}fillPool.sort(()=>Math.random()-.5);fillIndex=0}
+function renderFill(){if(!fillPool.length||fillIndex>=fillPool.length)buildFillPool();const b=fillPool[fillIndex++];const s=b.source;const ref=s.module+' / '+s.activity+' / '+s.file;$('#view').innerHTML='<div class="card"><div class="toolbar"><div><h2 style="margin:0">Fill-in-the-Blank Code Quiz</h2><div class="small">Question '+fillIndex+' of '+fillPool.length+' · Every source file contributes multiple syntax variants.</div></div><button class="btn" id="shuffleFill">Shuffle all questions</button><button class="btn" id="showFill">Show answers</button></div><div class="split" style="margin-top:14px"><div><div class="small">'+esc(ref)+'</div><pre class="code fill-code">'+b.html+'</pre><div class="small">The entire source is complete; only selected syntax tokens are blanked. Scroll the code panel while studying the matching output.</div></div><div>'+(s.image?'<img class="shot" src="'+s.image+'" alt="'+esc(s.imageName||'output screenshot')+'">':'<div class="notice">No matching screenshot was found for this source file.</div>')+'<p class="small">Matching output: '+esc(s.imageName||'none')+'</p></div></div><div class="toolbar" style="margin-top:14px"><button class="btn primary" id="checkFill">Check Answer</button><button class="btn" id="newFill">New code question</button><button class="btn" id="resetFill">Reset blanks</button></div><div id="feedback"></div></div>';
+  $('#checkFill').onclick=()=>{const inputs=[...document.querySelectorAll('.blank')];let hits=0;inputs.forEach(x=>{const i=+x.dataset.i;const expected=b.answers[i].answer;const ok=x.value.trim().toLowerCase()===expected.toLowerCase();x.classList.toggle('correct',ok);x.classList.toggle('incorrect',!ok);const tag=document.querySelector('.blank-result[data-r="'+i+'"]');tag.className='blank-result '+(ok?'correct':'incorrect');tag.textContent=ok?'✓':'✗ Correct: '+expected;if(ok)hits++});const ok=hits===inputs.length;record(ok,'Code syntax',{question:'Fill blanks in '+ref,answer:b.answers.map(x=>x.answer).join(', ')});$('#feedback').innerHTML='<div class="answer '+(ok?'':'wrong')+'"><b>'+hits+' / '+inputs.length+' correct '+(ok?'✓':'— keep studying the red blanks')+'</b><br><span>Green blanks match the real source. Red blanks show the exact correct token beside them.</span><br><span class="small">Code syntax · '+esc(ref)+'</span></div>'};$('#showFill').onclick=()=>document.querySelectorAll('.blank').forEach(x=>{x.value=b.answers[+x.dataset.i].answer;x.classList.add('correct');x.classList.remove('incorrect');const tag=document.querySelector('.blank-result[data-r="'+x.dataset.i+'"]');tag.className='blank-result correct';tag.textContent='✓'});$('#resetFill').onclick=()=>document.querySelectorAll('.blank').forEach(x=>{x.value='';x.classList.remove('correct','incorrect');const tag=document.querySelector('.blank-result[data-r="'+x.dataset.i+'"]');tag.className='blank-result';tag.textContent=''});$('#newFill').onclick=renderFill;$('#shuffleFill').onclick=()=>{fillPool=[];buildFillPool();renderFill()}}
+function renderFlash(){if(!flashPool.length||flashIndex>=flashPool.length){flashPool=F.slice().sort(()=>Math.random()-.5);flashIndex=0}const q=flashPool[flashIndex++];$('#view').innerHTML='<div class="card"><h2>Flashcards</h2><div class="small">Card '+flashIndex+' of '+flashPool.length+' · Source-derived syntax and concept review.</div><div class="flash" id="flashQ">'+esc(q[0])+'</div><div id="flashA" class="answer hide"><b>Answer:</b> '+esc(q[1])+'<br>'+esc(q[2])+'</div><div class="actions"><button class="btn primary" id="reveal">Reveal answer</button><button class="btn" id="gotIt">I knew it</button><button class="btn" id="missed">Review again</button><button class="btn" id="flashNew">Next card</button></div><div class="small" style="margin-top:12px">'+esc((q[3]||'OpenGL concepts')+(q[4]?' · '+q[4]:''))+'</div></div>';$('#reveal').onclick=()=>$('#flashA').classList.remove('hide');$('#gotIt').onclick=()=>{record(true,q[3]||'Flashcards', {question:q[0],answer:q[1]});renderFlash()};$('#missed').onclick=()=>{record(false,q[3]||'Flashcards', {question:q[0],answer:q[1]});renderFlash()};$('#flashNew').onclick=renderFlash}
+function renderShot(){const items=S.filter(s=>s.image);const s=items[Math.floor(Math.random()*items.length)];const q=['Which source file/activity best matches this output?',s.file,'The screenshot is paired with this real source file by activity token and module folder.','Screenshot recognition',s.id];$('#view').innerHTML='<div class="card"><h2>Screenshot-to-Code Quiz</h2><img class="shot" src="'+s.image+'"><p>Which source file/activity best matches this output?</p><select class="select" id="shotAns" style="width:100%"><option value="">Choose a source</option>'+items.slice().sort(()=>Math.random()-.5).slice(0,8).map(x=>'<option>'+esc(x.file+' — '+x.module+' / '+x.activity)+'</option>').join('')+'</select><div class="toolbar" style="margin-top:12px"><button class="btn primary" id="shotCheck">Check Answer</button><button class="btn" id="shotNew">New Question</button></div><div id="feedback"></div></div>';$('#shotCheck').onclick=()=>{const a=$('#shotAns').value;const ok=a.startsWith(s.file);record(ok,'Screenshot recognition',{question:q[0],answer:q[1]});$('#feedback').innerHTML=answerBox(q,'Screenshot recognition',s.file,'The filename and activity token match the embedded output asset.',s.id,ok)};$('#shotNew').onclick=renderShot}
+function renderOrder(){const stmts=['glutInit(&argc, argv);','glutInitWindowSize(600, 600);','glutCreateWindow("OpenGL Activity");','glutDisplayFunc(display);','glutMainLoop();'];const shuffled=stmts.slice().sort(()=>Math.random()-.5);$('#view').innerHTML='<div class="card"><h2>Code-Ordering Quiz</h2><p>Arrange the GLUT setup statements from initialization to event loop.</p><div class="order-list" id="order">'+shuffled.map((x,i)=>'<div class="order-item" draggable="true" data-v="'+esc(x)+'">'+esc(x)+'</div>').join('')+'</div><div class="toolbar" style="margin-top:12px"><button class="btn primary" id="orderCheck">Check Answer</button><button class="btn" id="orderNew">New Question</button></div><div id="feedback"></div></div>';let drag;document.querySelectorAll('.order-item').forEach(x=>{x.ondragstart=()=>drag=x;x.ondragover=e=>e.preventDefault();x.ondrop=()=>{if(drag!==x)x.parentNode.insertBefore(drag,x)}});$('#orderCheck').onclick=()=>{const got=[...document.querySelectorAll('.order-item')].map(x=>x.dataset.v);const ok=got.join('|')===stmts.join('|');record(ok,'Program structure',{question:'Arrange GLUT setup',answer:stmts.join(' → ')});$('#feedback').innerHTML=answerBox({},'Program structure',stmts.join(' → '),'Initialize GLUT, configure the window, create it, register the display callback, then enter glutMainLoop.', 'Any Module 1–4 main function',ok)};$('#orderNew').onclick=renderOrder}
+function renderDebug(){const q=['Fix the mistake: the program calls glBegin(GL_TRIANGLES) but never calls glEnd(). What is missing?','glEnd();','Every glBegin must be paired with glEnd before flushing or issuing unrelated drawing commands.','Debugging'];$('#view').innerHTML='<div class="card"><h2>Debugging Mode</h2><pre class="code">glBegin(GL_TRIANGLES);&#10;glVertex2f(0.0f, 0.6f);&#10;glVertex2f(-0.6f, -0.4f);&#10;glVertex2f(0.6f, -0.4f);&#10;glFlush();</pre><p>'+q[0]+'</p><input class="input" id="answer" style="width:100%" placeholder="Type the missing statement"><div class="toolbar" style="margin-top:12px"><button class="btn primary" id="check">Check Answer</button><button class="btn" id="debugNew">New error</button></div><div id="feedback"></div></div>';$('#check').onclick=()=>{const a=$('#answer').value.trim();const ok=a.replace(/\\s/g,'').toLowerCase()==='glend();';record(ok,'Debugging',{question:q[0],answer:q[1]});$('#feedback').innerHTML=answerBox({},'Debugging',q[1],q[2],'Immediate-mode source files',ok)};$('#debugNew').onclick=renderDebug}
+function renderMock(){clearInterval(timer);let left=300;mockEnd=Date.now()+left*1000;quizPool=Q.slice().sort(()=>Math.random()-.5).slice(0,10);quizIndex=0;function tick(){left=Math.max(0,Math.ceil((mockEnd-Date.now())/1000));const t=$('#timer');if(t)t.textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0');if(!left){clearInterval(timer);$('#feedback').innerHTML='<div class="answer wrong"><b>Time.</b> Start a new mock exam to continue.</div>'}}$('#view').innerHTML='<div class="card"><div class="toolbar"><div><h2 style="margin:0">Mock Exam Mode</h2><div class="small">10 mixed questions · timed · wrong answers are saved</div></div><b id="timer">5:00</b></div><div class="progress"><i id="mockProgress"></i></div><div id="mockQuestion" style="margin-top:14px"></div><div id="feedback"></div></div>';timer=setInterval(tick,250);tick();show();function show(){if(quizIndex>=quizPool.length){$('#mockQuestion').innerHTML='<h3>Mock complete</h3><p>Review Mistakes to revisit anything you missed.</p>';return}const q=quizPool[quizIndex];$('#mockQuestion').innerHTML='<h3>'+esc((quizIndex+1)+'. '+q[0])+'</h3><input class="input" id="answer" style="width:100%" placeholder="Your answer"><div class="toolbar" style="margin-top:12px"><button class="btn primary" id="check">Check Answer</button></div>';$('#mockProgress').style.width=(quizIndex/quizPool.length*100)+'%';$('#check').onclick=()=>{const a=$('#answer').value.trim();const ok=a.toLowerCase()===String(q[1]).toLowerCase()||String(q[1]).toLowerCase().includes(a.toLowerCase())&&a.length>3;record(ok,q[3]||'Mock exam',{question:q[0],answer:q[1]});$('#feedback').innerHTML=answerBox(q,q[3]||'Mock exam',q[1],q[2],q[4]||'Concept bank',ok);quizIndex++;setTimeout(show,800)}}}
+function renderMistakes(){const w=state.wrong||[];$('#view').innerHTML='<div class="card"><h2>Mistakes & Progress</h2><div class="progress"><i style="width:'+(state.answered?state.correct/state.answered*100:0)+'%"></i></div><p class="small">'+state.correct+' correct out of '+state.answered+' answered. Weak topics are counted by missed questions.</p><h3>Review Mistakes</h3>'+(w.length?w.slice(0,30).map(x=>'<div class="answer wrong"><b>'+esc(x.question)+'</b><br>Correct answer: '+esc(x.answer)+'</div>').join(''):'<div class="notice">No mistakes saved yet. Answer a few questions to build your review list.</div>')+'</div>'}
+function render(){nav();renderStats();if(mode==='learn')renderLearn();else if(mode==='fill')renderFill();else if(mode==='flash')renderFlash();else renderMistakes()}
+$('#theme').onclick=()=>{document.body.classList.toggle('light');state.theme=document.body.classList.contains('light')?'light':'dark';save()};$('#resetProgress').onclick=()=>{if(confirm('Reset saved scores and mistakes?')){localStorage.removeItem('ogl-reviewer-progress');location.reload()}};$('#search').oninput=()=>{if(mode==='learn')renderLearn()};$('#moduleFilter').onchange=()=>{filters();if(mode==='learn')renderLearn()};$('#activityFilter').onchange=()=>{if(mode==='learn')renderLearn()};filters();if(state.theme==='light')document.body.classList.add('light');render();
+</script></body></html>`;
+fs.writeFileSync(outputFile, html, 'utf8');
+console.log(`Wrote ${outputFile} with ${sources.length} sources and ${allQ.length} questions.`);
