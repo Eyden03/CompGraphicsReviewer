@@ -160,7 +160,7 @@ for(const s of sources){
   }
 }
 const flashcards = concepts.concat(generatedFlashcards);
-const payload = JSON.stringify({sources, questions: allQ, flashcards, fillVariants: 3});
+const payload = JSON.stringify({sources, questions: allQ, flashcards, fillVariants: 4});
 
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenGL Exam Reviewer</title>
 <style>
@@ -187,11 +187,11 @@ function makeBlankQuiz(s,variant=0){
   // while comments and include text remain readable for context.
   let text=idx.map(i=>lines[i]);
   const codeOnly=text.filter(x=>!/^\\s*(\\/\\/|\\*|\\/\\*)/.test(x));
-  const raw=[...new Set(codeOnly.join('\\n').match(/glut[A-Za-z0-9_]+|gl[A-Za-z0-9_]+|GL_[A-Z0-9_]+|\\b(void|int|float|double|const|return)\\b|[-+]?\\d+(?:\\.\\d+)?f?\\b/g)||[])];
-  const gl=raw.filter(x=>/^glut|^gl|^GL_/.test(x));
-  const numbers=raw.filter(x=>/^[-+]?\\d/.test(x));
-  const syntax=raw.filter(x=>/^(void|int|float|double|const|return)$/.test(x));
-  const groups=[gl,numbers,syntax];let chosen=[];const primary=groups[variant%groups.length];
+  const raw=[...new Set(codeOnly.join('\\n').match(/glut[A-Za-z0-9_]+|gl[A-Za-z0-9_]+|GL_[A-Z0-9_]+|\\b(display|keyboard|specialKeys|mouse|motion|passiveMotion|reshape|timer|idle|menu)\\b/g)||[])];
+  const gl=raw.filter(x=>/^(glut|gl)[A-Z]/.test(x));
+  const constants=raw.filter(x=>/^GL_[A-Z0-9_]+$/.test(x)&&x!=='GL_SILENCE_DEPRECATION');
+  const callbacks=raw.filter(x=>/^(display|keyboard|specialKeys|mouse|motion|passiveMotion|reshape|timer|idle|menu)$/.test(x));
+  const groups=[gl,constants,callbacks];let chosen=[];const primary=groups[variant%groups.length];
   chosen.push(...primary.slice(0,6));
   for(const group of groups)for(const token of group)if(chosen.length<6&&!chosen.includes(token))chosen.push(token);
   const answers=[];let html=text.map((line)=>{let out=esc(line);for(const token of chosen){if(answers.find(a=>a.token===token))continue;const safe=esc(token);if(out.includes(safe)){const n=answers.length;answers.push({token,answer:token});out=out.replace(safe,'<input class="blank" data-i="'+n+'" placeholder="…"><span class="blank-result" data-r="'+n+'"></span>');break}}return out}).join('\\n');
