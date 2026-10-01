@@ -3,6 +3,8 @@ const path = require('path');
 
 const root = fs.existsSync(path.join(__dirname,'Module1Act')) ? __dirname : path.resolve(__dirname,'..');
 const outputFile = fs.existsSync(path.join(__dirname,'Module1Act')) ? path.join(__dirname,'OpenGL_Exam_Reviewer.html') : path.join(__dirname,'index.html');
+const assetsDir = path.join(__dirname,'assets');
+fs.mkdirSync(assetsDir, {recursive:true});
 const moduleDirs = ['Module1Act','Module2Act','Module3Act','Module4Act'];
 const sourceFiles = [];
 const imageFiles = [];
@@ -50,7 +52,7 @@ function findImage(p) {
   });
   return candidates[0] || null;
 }
-const sources = sourceFiles.sort().map(p => {
+const sources = sourceFiles.sort().map((p,sourceIndex) => {
   const rel = path.relative(root,p).replaceAll('\\','/');
   const parts = rel.split('/');
   const module = parts[0].replace('Act','');
@@ -59,7 +61,9 @@ const sources = sourceFiles.sort().map(p => {
   let image = null;
   if (img) {
     const ext = path.extname(img).toLowerCase();
-    image = `data:${ext === '.gif' ? 'image/gif' : 'image/png'};base64,${fs.readFileSync(img).toString('base64')}`;
+    const assetName = `source-${String(sourceIndex+1).padStart(3,'0')}${ext}`;
+    fs.copyFileSync(img, path.join(assetsDir, assetName));
+    image = `assets/${assetName}`;
   }
   return {id: rel, file: path.basename(p), module, activity, code: fs.readFileSync(p,'utf8'), html: highlight(fs.readFileSync(p,'utf8')), image, imageName: img ? path.basename(img) : null};
 });
