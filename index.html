@@ -47,7 +47,7 @@ function makeFocusedBlankQuiz(s,variant=0){
   const callbacks=[...new Set(callbackNames.filter(x=>new RegExp('\\b'+x+'\\b').test(calls)).concat((calls.match(/\b(?:argc|argv|indices|colors?|vertices?|triangleVertex|quadVertex|pointVertex|[A-Za-z_][A-Za-z0-9_]*Array)\b/g)||[])))];
   const groups=[gl,constants,callbacks,numbers,[...new Set(gl.concat(constants,callbacks,numbers))]];let chosen=[];const primary=groups[variant%groups.length];chosen.push(...primary.slice(0,6));for(const group of groups)for(const token of group)if(chosen.length<6&&!chosen.includes(token))chosen.push(token);
   const answers=[];const html=lines.map((line,lineNo)=>{let out=esc(line);const rawCode=codeLines[lineNo];for(const token of chosen){if(answers.find(a=>a.token===token))continue;const pos=rawCode.indexOf(token);if(pos>=0){const n=answers.length;answers.push({token,answer:token});const escapedPos=esc(line.slice(0,pos)).length;out=out.slice(0,escapedPos)+out.slice(escapedPos).replace(esc(token),'<input class="blank" data-i="'+n+'" placeholder="â€¦"><span class="blank-result" data-r="'+n+'"></span>');break}}return out}).join('\n');
-  return {html,answers,source:s};
+  return {html:html.replace(/placeholder="[^"]*"/g,'placeholder="..."'),answers,source:s};
 }
 function buildFillPool(){const sourcesForFill=pickSource().filter(s=>s.code.includes('gl'));fillPool=[];for(const s of sourcesForFill)for(let v=0;v<DB.fillVariants;v++){const b=makeFocusedBlankQuiz(s,v);if(b.answers.length>=3)fillPool.push(b)}fillPool.sort(()=>Math.random()-.5);fillIndex=0}
 function renderFillBrowser(){renderSourceBrowser(fillPool.map((b,i)=>({label:'Question '+(i+1)+' · '+b.source.file,meta:b.source.module+' / '+b.source.activity})), 'Fill-in-the-Blank', i=>{fillIndex=i;renderFill()})}
