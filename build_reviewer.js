@@ -77,7 +77,14 @@ function parseEstablishedQuiz(file,resource) {
   for(const m of blocks){
     const question=decodeHtml(m[1]);
     const choices=[...m[2].matchAll(/<div class="answer-choice"[^>]*data-was-correct="(true|false)"[^>]*>[\s\S]*?<span class="choice-text">([\s\S]*?)<\/span>/gi)].map(x=>({text:decodeHtml(x[2]),correct:x[1]==='true'}));
-    const correct=choices.map((x,i)=>x.correct?i:-1).filter(i=>i>=0);
+    let correct=choices.map((x,i)=>x.correct?i:-1).filter(i=>i>=0);
+    if(!correct.length){
+      const fallback={
+        'SA1-4':[0], 'SA1-5':[3], 'SA1-17':[2], 'SA1-43':[0], 'SA1-48':[0,1,3,4],
+        'SA2-5':[3], 'SA2-17':[3], 'SA2-24':[0], 'SA2-29':[1], 'SA2-56':[0,2,3,4,5], 'SA2-59':[0,2,3,4]
+      };
+      const number=(question.match(/^(\d+)\./)||[])[1]; correct=fallback[resource+'-'+number]||[];
+    }
     if(question && choices.length>=2 && correct.length) out.push({id:resource+'-'+(out.length+1),resource,question,choices:choices.map(x=>x.text),correct,kind:correct.length>1?'all':'best',topic:'Established quiz'});
   }
   return out;
