@@ -5,7 +5,7 @@ const root = fs.existsSync(path.join(__dirname,'Module1Act')) ? __dirname : path
 const outputFile = fs.existsSync(path.join(__dirname,'Module1Act')) ? path.join(__dirname,'OpenGL_Exam_Reviewer.html') : path.join(__dirname,'index.html');
 const assetsDir = path.join(__dirname,'assets');
 fs.mkdirSync(assetsDir, {recursive:true});
-const moduleDirs = ['Module1Act','Module2Act','Module3Act','Module4Act'];
+const moduleDirs = ['Module1Act','Module2Act','Module3Act','Module4Act','Module5Act','Module6Act'];
 const sourceFiles = [];
 const imageFiles = [];
 
@@ -16,8 +16,10 @@ function walk(dir) {
     if (ent.isDirectory()) walk(p);
     else if (ent.isFile()) {
       const ext = path.extname(ent.name).toLowerCase();
-      if (ext === '.cpp' && /^Module[1-4]Act/.test(path.relative(root,p))) sourceFiles.push(p);
-      if (['.png','.gif'].includes(ext) && /^Module[1-4]Act/.test(path.relative(root,p))) imageFiles.push(p);
+      const rel = path.relative(root,p).replaceAll('\\','/');
+      const included = /^Module[1-4]Act\//.test(rel) || /^Module5Act\/StudentLab\//.test(rel) || /^Module6Act\/SourceCode\/PartA\//.test(rel) || /^Module5Act\/StudentLab\/OutputScreenshots\//.test(rel) || /^Module6Act\/OutputScreenshots\/PartA\//.test(rel);
+      if (ext === '.cpp' && included) sourceFiles.push(p);
+      if (['.png','.gif'].includes(ext) && included) imageFiles.push(p);
     }
   }
 }
@@ -42,12 +44,22 @@ function findImage(p) {
   const rel = path.relative(root,p).replaceAll('\\','/');
   const mod = rel.match(/^Module\dAct/)[0];
   const tok = tokenFor(p);
+  const part = (rel.match(/\/Part([AB])(?:\/|$)/i)||[])[1]?.toLowerCase();
+  const sourceName = path.basename(p,'.cpp').toLowerCase();
   const candidates = imageFiles.filter(f => {
     const r = path.relative(root,f).replaceAll('\\','/').toLowerCase();
-    return r.startsWith(mod.toLowerCase()) && r.includes(tok);
+    const samePart=!part || r.includes('/part'+part+'/');
+    return r.startsWith(mod.toLowerCase()) && samePart && new RegExp('(?:^|[/_ -])'+tok+'(?:[. _/-]|$)','i').test(r);
   });
   candidates.sort((a,b) => {
-    const score = f => /OutputScreenshot/i.test(f) ? 0 : 1;
+    const score = f => {
+      const n=path.basename(f).toLowerCase(); let s=0;
+      if(path.extname(f).toLowerCase()==='.gif')s-=100;
+      if(sourceName.includes('corrected'))s+=n.includes('corrected')?-30:n.includes('original')?20:0;
+      else if(sourceName.includes('original'))s+=n.includes('original')?-30:n.includes('corrected')?20:0;
+      else if(n.includes('original'))s+=10;
+      return s;
+    };
     return score(a)-score(b) || fs.statSync(a).size-fs.statSync(b).size;
   });
   return candidates[0] || null;
@@ -191,6 +203,7 @@ function renderMockEstablished(){const pool=EQ;if(!pool.length){$('#view').inner
 function setupMockNav(){const bar=$('#checkEstablished')?.parentElement,next=$('#newEstablished');if(!bar||!next)return;if(next.textContent!=='Next question')next.textContent='Next question';let prev=$('#prevEstablished');if(!prev){prev=document.createElement('button');prev.id='prevEstablished';prev.className='btn';prev.textContent='Previous'}if(next.parentElement!==bar)bar.appendChild(next);if(prev.parentElement!==bar)bar.insertBefore(prev,next);next.onclick=()=>renderMockEstablished();prev.onclick=()=>{establishedIndex=(establishedIndex-2+establishedPool.length)%establishedPool.length;renderMockEstablished()}}
 function setupFillNav(){const bar=$('#checkFill')?.parentElement,next=$('#newFill');if(!bar||!next)return;if(next.textContent!=='Next question')next.textContent='Next question';let prev=$('#prevFill');if(!prev){prev=document.createElement('button');prev.id='prevFill';prev.className='btn';prev.textContent='Previous'}if(next.parentElement!==bar)bar.appendChild(next);if(prev.parentElement!==bar)bar.insertBefore(prev,next);next.onclick=()=>renderFill();prev.onclick=()=>{fillIndex=(fillIndex-2+fillPool.length)%fillPool.length;renderFill()}}
 const rawMockRender=renderMockEstablished;renderMockEstablished=()=>{rawMockRender();setupMockNav()};const rawFillRender=renderFill;renderFill=()=>{rawFillRender();setupFillNav()};const normalRender=render;render=()=>{if(mode==='mock'){nav();renderStats();$('#sourceBrowser').innerHTML='';renderMockEstablished();setupMockNav()}else{normalRender();if(mode==='fill')setupFillNav()}};const navObserver=new MutationObserver(()=>{if(mode==='mock')setupMockNav();else if(mode==='fill')setupFillNav()});navObserver.observe($('#view'),{childList:true,subtree:true});
+['Module5','Module6'].forEach(m=>{if(![...$('#moduleFilter').options].some(o=>o.value===m)){const o=document.createElement('option');o.value=m;o.textContent=m;$('#moduleFilter').appendChild(o)}});
 </script>`;
 
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenGL Exam Reviewer</title>
