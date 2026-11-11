@@ -17,7 +17,7 @@ function walk(dir) {
     else if (ent.isFile()) {
       const ext = path.extname(ent.name).toLowerCase();
       const rel = path.relative(root,p).replaceAll('\\','/');
-      const included = /^Module[1-4]Act\//.test(rel) || /^Module5Act\/StudentLab\//.test(rel) || /^Module6Act\/SourceCode\/PartA\//.test(rel) || /^Module5Act\/StudentLab\/OutputScreenshots\//.test(rel) || /^Module6Act\/OutputScreenshots\/PartA\//.test(rel);
+      const included = /^Module[1-4]Act\//.test(rel) || /^Module5Act\/StudentLab\//.test(rel) || /^Module6Act\/SourceCode\/Part[AB]\//.test(rel) || /^Module5Act\/StudentLab\/OutputScreenshots\//.test(rel) || /^Module6Act\/OutputScreenshots\/Part[AB]\//.test(rel);
       if (ext === '.cpp' && included) sourceFiles.push(p);
       if (['.png','.gif'].includes(ext) && included) imageFiles.push(p);
     }
